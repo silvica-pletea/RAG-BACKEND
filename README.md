@@ -29,7 +29,7 @@ This setup is intended for local development and testing only. Do not use this c
 ## 1. Clone the repository
 
 ```bash
-git clone https://github.com/username/RAG-BACKEND.git
+git clone https://github.com/silvica-pletea/RAG-BACKEND.git
 cd RAG-BACKEND
 ```
 
