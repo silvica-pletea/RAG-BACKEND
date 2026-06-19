@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+langchain-text-splitters
+langchain-voyageai
+langchain_chroma
+langchain_anthropic
+pypdf
+python-multipart
+chromadb
