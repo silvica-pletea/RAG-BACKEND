@@ -28,20 +28,11 @@ class LangchainUtils:
 
     client = chromadb.PersistentClient(path=CHROMA_PERSIST_PATH)
 
-    def _collection_exists(self, file_name: str) -> bool:
-        collections = self._get_collections()
-        collection_name = self.sanitize_collection_name(file_name)
-        return False if collection_name not in collections else True
+    def _collection_exists(self, collection_name: str) -> bool:
+        return collection_name in self._get_collections()
         
     def _get_collections(self) -> list[str]:
         return [c.name for c in LangchainUtils.client.list_collections()]
-    
-    def _get_vector_store(self, collection_name: str) -> Chroma:
-        return Chroma(
-            collection_name = collection_name,
-            embedding_function = LangchainUtils.embeddings,
-            persist_directory = CHROMA_PERSIST_PATH
-        )
     
     def get_retrievers(self):
         collection_names = self._get_collections()
@@ -54,22 +45,18 @@ class LangchainUtils:
         }
 
     def create_collection(self, file_name: str) -> Collection:
-        exception = None
-        try:
+        collection_name = self.sanitize_collection_name(file_name)
+        if self._collection_exists(collection_name):
             self.delete_collection(file_name)
-        except Exception as e:
-            if type(e) is not FileNotFoundError:
-                exception = e
-        finally:
-            if exception is None:
-                collection = LangchainUtils.client.create_collection(name=self.sanitize_collection_name(file_name), embedding_function=LangchainUtils.embeddings_fn)
-            else:
-                raise exception
-        return collection
+        return LangchainUtils.client.create_collection(
+            name=collection_name,
+            embedding_function=LangchainUtils.embeddings_fn,
+        )
 
     def delete_collection(self, file_name: str) -> None:
-        if self._collection_exists(file_name):
-            LangchainUtils.client.delete_collection(self.sanitize_collection_name(file_name))
+        collection_name = self.sanitize_collection_name(file_name)
+        if self._collection_exists(collection_name):
+            LangchainUtils.client.delete_collection(collection_name)
         else:
             raise FileNotFoundError(f"Collection '{file_name}' not found")
 

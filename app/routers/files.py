@@ -62,7 +62,6 @@ async def upload_file(file: UploadFile):
             }
     )
 
-    # This should be a worker or chron job to follow the RAG flow
     try: 
         embedding_service.process_file(file_path, file.filename)
     except Exception as e:
@@ -91,14 +90,25 @@ def get_files():
 
 @router.delete("/delete/{file_name}")
 async def delete(file_name):
+
+    errors = []
     try: 
         embedding_service.delete_file(file_name)
+    except Exception as e:
+        errors.append(f"Failed to delete collection: {str(e)}")
+
+    try:
         file_service.delete_file(file_name)
     except Exception as e:
+        errors.append(f"Failed to delete file from disk: {str(e)}")
+    
+    if len(errors) > 0:
         raise HTTPException(
             status_code = 500,
             detail = {
                 "message": "Failed to delete a file",
-                "errors": str(e)
+                "errors": ". ".join(errors),
             }
         )
+    else:
+        return f"File '{file_name}' deleted successfully"

@@ -1,5 +1,4 @@
 from pypdf import PdfReader
-from app.config.settings import CHROMA_PERSIST_PATH
 from app.utils.langchain import LangchainUtils
 from langchain_core.documents import Document
 
@@ -25,8 +24,6 @@ class EmbeddingService:
         return self.text_splitter.split_documents(documents)
     
     def _save_to_chroma(self, file_name: str, chunks: list[Document]) -> None:
-        file_path = CHROMA_PERSIST_PATH
-        file_path.parent.mkdir(parents=True, exist_ok=True)
         documents = [d.page_content for d in chunks]
         metadatas = [d.metadata for d in chunks]
         ids = [f"doc_{i}" for i in range(len(chunks))]
@@ -35,7 +32,14 @@ class EmbeddingService:
 
     def _read_pdf(self, filename) -> list[Document]:
         reader = PdfReader(filename)
-        return [
-            Document(page_content = p.extract_text().strip(), metadata= {"source": filename, "page": p.page_number })
-            for p in reader.pages if p.extract_text().strip() #filter empty text
-        ]
+        documents = []
+        for page in reader.pages:
+            text = page.extract_text().strip()
+            if text:  # filter empty pages
+                documents.append(
+                    Document(
+                        page_content=text,
+                        metadata={"source": filename, "page": page.page_number},
+                    )
+                )
+        return documents

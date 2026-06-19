@@ -39,17 +39,17 @@ class RAGService:
         
         self.llm = ChatAnthropic(
             api_key=ANTHROPIC_API_KEY,
-            model_name=ANTHROPIC_MODEL, 
+            model_name=ANTHROPIC_MODEL,
             max_tokens=1000,
-            temperature=1.0
+            temperature=0
         )
 
 
         self.fast_llm = ChatAnthropic(
             api_key=ANTHROPIC_API_KEY,
-            model_name=ANTHROPIC_FAST_MODEL, 
+            model_name=ANTHROPIC_FAST_MODEL,
             max_tokens=1000,
-            temperature=1.0
+            temperature=0
         )
 
         self.embeddings = langchain_utils.embeddings
@@ -68,69 +68,54 @@ class RAGService:
         )
 
     def ask(self, question: str) -> str:
-        try:
-            if not isinstance(question, str):
-                raise TypeError("Query text must be a string.")
-            retrievers = langchain_utils.get_retrievers() 
-            retrieve_all = RunnableParallel(**retrievers)
+        retrievers = langchain_utils.get_retrievers()
+        retrieve_all = RunnableParallel(**retrievers)
 
-            # Only reformulate if there is chat history
-            contextualize_question = RunnableBranch(
-                (
-                    # If chat_history is not empty → reformulate
-                    lambda x: len(x["chat_history"]) > 0,
-                    RAGService.CONTEXTUALIZE_PROMPT | self.fast_llm | StrOutputParser(),
-                ),
-                # Otherwise → return the question as is
-                RunnableLambda(lambda x: x["question"]),
+        # Only reformulate if there is chat history
+        contextualize_question = RunnableBranch(
+            (
+                # If chat_history is not empty → reformulate
+                lambda x: len(x["chat_history"]) > 0,
+                RAGService.CONTEXTUALIZE_PROMPT | self.fast_llm | StrOutputParser(),
+            ),
+            # Otherwise → return the question as is
+            RunnableLambda(lambda x: x["question"]),
+        )
+
+        chain = (
+            # Step 1 — keep original input, add the reformulated question
+            RunnableParallel(
+                reformulated_question=contextualize_question,
+                chat_history=RunnableLambda(lambda x: x.get("chat_history", [])),
+                original_question=RunnableLambda(lambda x: x["question"]),
             )
-
-            chain = (
-                # Step 1 — keep original input, add the reformulated question
-                RunnableParallel(
-                    reformulated_question=contextualize_question,
-                    chat_history=RunnableLambda(lambda x: x.get("chat_history", [])),
-                    original_question=RunnableLambda(lambda x: x["question"]),
-                )
-                # Step 2 — retrieve using the reformulated question
-                | RunnableLambda(lambda x: {
-                    "retrieved": retrieve_all.invoke(x["reformulated_question"]),
-                    "question": x["reformulated_question"],
-                    "chat_history": x["chat_history"],
-                })
-                # Step 3 — merge docs + build QA input
-                | RunnableLambda(lambda x: {
-                    "context": self.merge_docs(x["retrieved"]),
-                    "question": x["question"],
-                    "chat_history": x["chat_history"],
-                })
-                # Step 4 — answer
-                | RAGService.QA_PROMPT
-                | self.llm
-                | StrOutputParser()
-            )
-
-            answer = chain.invoke({
-                "chat_history": self.chat_history,
-                "question": question
+            # Step 2 — retrieve using the reformulated question
+            | RunnableLambda(lambda x: {
+                "retrieved": retrieve_all.invoke(x["reformulated_question"]),
+                "question": x["reformulated_question"],
+                "chat_history": x["chat_history"],
             })
+            # Step 3 — merge docs + build QA input
+            | RunnableLambda(lambda x: {
+                "context": self.merge_docs(x["retrieved"]),
+                "question": x["question"],
+                "chat_history": x["chat_history"],
+            })
+            # Step 4 — answer
+            | RAGService.QA_PROMPT
+            | self.llm
+            | StrOutputParser()
+        )
 
-            # Update history (keep last 10 turns)
-            self.chat_history.append(HumanMessage(content=question))
-            self.chat_history.append(AIMessage(content=answer))
-            if len(self.chat_history) > 20:
-                self.chat_history = self.chat_history[-20:]
-
-            return answer
-        except Exception as e:
-            raise e
-    
-    def _reformulate_question(self, question: str) -> str:
-        #Reformulate question using chat history.
-        if not self.chat_history:
-            return question
-        chain = RAGService.REFORMULATE_PROMPT | self.fast_llm | StrOutputParser()
-        return chain.invoke({
+        answer = chain.invoke({
             "chat_history": self.chat_history,
             "question": question
         })
+
+        # Update history (keep last 10 turns)
+        self.chat_history.append(HumanMessage(content=question))
+        self.chat_history.append(AIMessage(content=answer))
+        if len(self.chat_history) > 20:
+            self.chat_history = self.chat_history[-20:]
+
+        return answer

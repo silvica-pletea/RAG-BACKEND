@@ -24,6 +24,8 @@ app/
 
 This setup is intended for local development and testing only. Do not use this code as-is in production environments.
 
+Chat history is kept in a single in-memory `RAGService` instance shared by all requests, so the API is effectively single-user and history is lost on restart.
+
 # Quick Start – From Zero to Working RAG
 
 ## 1. Clone the repository
@@ -86,7 +88,7 @@ ANTHROPIC_FAST_MODEL=claude-haiku-4-5-20251001
 ## 5. Start the API server
 
 ```bash
-uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ## 6. Explore the API

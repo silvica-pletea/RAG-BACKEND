@@ -15,12 +15,12 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 def chat(data: ChatRequest):
     try:
         answer = rag_service.ask(data.question)
-        return ChatResponse(answer = answer) 
+        return ChatResponse(answer=answer)
     except Exception as e:
         raise HTTPException(
-            status_code = 500,
-            detail = {
-                "message": "Failed to retrive the answer",
-                "errors": str(e)
-            }
+            status_code=500,
+            detail={
+                "message": "Failed to retrieve the answer",
+                "errors": str(e),
+            },
         )
