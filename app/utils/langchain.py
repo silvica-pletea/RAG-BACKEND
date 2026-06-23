@@ -13,6 +13,7 @@ class LangchainUtils:
         voyage_api_key=VOYAGEAI_API_KEY, 
         model=VOYAGEAI_MODEL
     )
+
     embeddings_fn = VoyageAIEmbeddingFunction(
         api_key=VOYAGEAI_API_KEY, 
         model_name=VOYAGEAI_MODEL

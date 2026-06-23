@@ -9,7 +9,6 @@ class EmbeddingService:
     # Constructor
     def __init__(self):
         self.text_splitter = langchain_utils.text_splitter
-        self.embeddings = langchain_utils.embeddings
 
     def process_file(self, file_path, file_name) -> None:
         documents = self._read_pdf(file_path)

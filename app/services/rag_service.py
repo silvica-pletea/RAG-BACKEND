@@ -51,8 +51,7 @@ class RAGService:
             max_tokens=1000,
             temperature=0
         )
-
-        self.embeddings = langchain_utils.embeddings
+        
         self.chat_history = []
 
     def merge_docs(self, inputs: dict) -> str:

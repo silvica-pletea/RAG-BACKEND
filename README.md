@@ -93,7 +93,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ## 6. Explore the API
 
-Open `http://127.0.0.1:8000/docs` in your browser to view and test all available endpoints using the Swagger UI.
+Open `http://0.0.0.0:8000/docs` in your browser to view and test all available endpoints using the Swagger UI.
 
 ## Docker builder
 
@@ -121,7 +121,7 @@ docker logs -f rag-backend
 ```
 
 ### 4. Explore the API
-Open `http://127.0.0.1:8000/docs` in your browser to view and test all available endpoints using the Swagger UI.
+Open `http://0.0.0.0:8000/docs` in your browser to view and test all available endpoints using the Swagger UI.
 
 ### 5. Stop the container
 

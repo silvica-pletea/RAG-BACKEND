@@ -11,7 +11,7 @@ class ChatResponse(BaseModel):
 rag_service = RAGService();
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-@router.post("/", response_model=ChatResponse)
+@router.post("", response_model=ChatResponse)
 def chat(data: ChatRequest):
     try:
         answer = rag_service.ask(data.question)
