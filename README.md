@@ -2,6 +2,8 @@
 
 A lightweight RAG (Retrieval-Augmented Generation) app combining FastAPI,LangChain, ChromaDB, the Anthropic API, and VoyageAI embeddings.
 
+The frontend it serves is the **RAG-FRONTEND** app, located here: https://github.com/silvica-pletea/RAG-FRONTEND.git.
+
 ## Structure
 
 ```text
