@@ -25,8 +25,17 @@ class RAGService:
 
     QA_PROMPT = ChatPromptTemplate.from_messages([
         ("system", """You are a helpful assistant that answers questions based on the provided context.
-            Only answer based on the context below. Cite sources using [Source N] notation.
+            Only answer based on the context below.
             If the answer is not in the context, say "I could not find relevant information in the uploaded documents."
+
+            Cite sources using the exact [Source: name] labels shown in the context.
+
+            Format the answer as clean, readable Markdown:
+            - Use ## and ### headings to separate sections.
+            - Use **bold** for key terms, identifiers, and figures.
+            - Use - bullet lists or numbered lists for steps or grouped facts.
+            - Write short paragraphs separated by a blank line.
+            - Always put a blank line before a heading or a list.
 
     Context:
     {context}"""),
