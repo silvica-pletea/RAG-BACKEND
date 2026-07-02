@@ -1,4 +1,5 @@
 from app.config.settings import ANTHROPIC_MODEL, ANTHROPIC_FAST_MODEL, ANTHROPIC_API_KEY
+from app.config.constants import SearchType
 from langchain_anthropic import ChatAnthropic
 from app.services.file_service import FileService
 from app.utils.langchain import LangchainUtils
@@ -25,23 +26,19 @@ class RAGService:
 
     QA_PROMPT = ChatPromptTemplate.from_messages([
         ("system", """You are a helpful assistant that answers questions based on the provided context.
-            Only answer based on the context below.
-            If the answer is not in the context, say "I could not find relevant information in the uploaded documents."
 
-            Cite sources using the exact [Source: name] labels shown in the context.
+        Rules:
+        - Answer ONLY using information found in the context below. Do not add outside knowledge.
+        - Return the exact paragraph(s) from the context that answer the question. Do not rephrase, summarize, or modify the text in any way.
+        - If the answer is not in the context, respond exactly with: "I could not find relevant information in the uploaded documents."
+        - After the paragraph(s), cite the source using the exact [Source: name] label shown in the context.
 
-            Format the answer as clean, readable Markdown:
-            - Use ## and ### headings to separate sections.
-            - Use **bold** for key terms, identifiers, and figures.
-            - Use - bullet lists or numbered lists for steps or grouped facts.
-            - Write short paragraphs separated by a blank line.
-            - Always put a blank line before a heading or a list.
 
-    Context:
-    {context}"""),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{question}")
-    ])
+        Context:
+        {context}"""),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{question}")
+        ])
 
     #constructor
     def __init__(self):
@@ -53,7 +50,6 @@ class RAGService:
             temperature=0
         )
 
-
         self.fast_llm = ChatAnthropic(
             api_key=ANTHROPIC_API_KEY,
             model_name=ANTHROPIC_FAST_MODEL,
@@ -61,9 +57,10 @@ class RAGService:
             temperature=0
         )
         
-        self.chat_history = []
+        # One chat history per search mode
+        self.chat_histories = {SearchType.HYBRID: [], SearchType.SEMANTIC: [], SearchType.BM25: []}
 
-    def merge_docs(self, inputs: dict) -> str:
+    def _merge_docs(self, inputs: dict) -> str:
         all_docs = []
         for collection_name, docs in inputs.items():
             for doc in docs:
@@ -75,9 +72,17 @@ class RAGService:
             for d in all_docs
         )
 
-    def ask(self, question: str) -> str:
-        retrievers = langchain_utils.get_retrievers()
+    def ask(self, question: str, type: SearchType) -> str:
+        if type == SearchType.HYBRID:
+            retrievers = langchain_utils.get_hybrid_retrievers()
+        elif type == SearchType.SEMANTIC:
+            retrievers = langchain_utils.get_vector_retrievers()
+        else:
+            retrievers = langchain_utils.get_bm25_retrievers()
+            
         retrieve_all = RunnableParallel(**retrievers)
+
+        chat_history = self.chat_histories[type]
 
         # Only reformulate if there is chat history
         contextualize_question = RunnableBranch(
@@ -105,7 +110,7 @@ class RAGService:
             })
             # Step 3 — merge docs + build QA input
             | RunnableLambda(lambda x: {
-                "context": self.merge_docs(x["retrieved"]),
+                "context": self._merge_docs(x["retrieved"]),
                 "question": x["question"],
                 "chat_history": x["chat_history"],
             })
@@ -116,14 +121,16 @@ class RAGService:
         )
 
         answer = chain.invoke({
-            "chat_history": self.chat_history,
+            "chat_history": chat_history,
             "question": question
         })
 
+        print(answer)
+
         # Update history (keep last 10 turns)
-        self.chat_history.append(HumanMessage(content=question))
-        self.chat_history.append(AIMessage(content=answer))
-        if len(self.chat_history) > 20:
-            self.chat_history = self.chat_history[-20:]
+        chat_history.append(HumanMessage(content=question))
+        chat_history.append(AIMessage(content=answer))
+        if len(chat_history) > 20:
+            del chat_history[:-20]
 
         return answer

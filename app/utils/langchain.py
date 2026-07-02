@@ -5,6 +5,9 @@ from chromadb.utils.embedding_functions import VoyageAIEmbeddingFunction
 from langchain_voyageai import VoyageAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
+from langchain_core.documents import Document
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever
 from app.config.settings import CHUNK_SIZE, CHUNK_OVERLAP, VOYAGEAI_MODEL, VOYAGEAI_API_KEY, CHROMA_PERSIST_PATH
 
 class LangchainUtils:
@@ -35,7 +38,27 @@ class LangchainUtils:
     def _get_collections(self) -> list[str]:
         return [c.name for c in LangchainUtils.client.list_collections()]
     
-    def get_retrievers(self):
+    def _load_documents(self, collection_name: str) -> list[Document]:
+        col = LangchainUtils.client.get_collection(collection_name)
+        data = col.get(include=["documents", "metadatas"])
+        return [
+            Document(page_content=text, metadata=meta or {})
+            for text, meta in zip(data["documents"], data["metadatas"])
+    ]
+
+    def _bm25_retriever(self, collection_name: str) -> BM25Retriever:
+        docs = self._load_documents(collection_name)
+        retriever = BM25Retriever.from_documents(docs, )
+        retriever.k = 5
+        return retriever
+    
+    def get_bm25_retrievers(self):
+        collection_names = self._get_collections()
+        return {
+            name: self._bm25_retriever(name) for name in collection_names
+        }
+
+    def get_vector_retrievers(self):
         collection_names = self._get_collections()
         return {
             name: Chroma(
@@ -44,6 +67,23 @@ class LangchainUtils:
                 persist_directory=CHROMA_PERSIST_PATH,
             ).as_retriever(search_type="mmr", search_kwargs={"k": 5, "fetch_k": 20}) for name in collection_names
         }
+    
+    def get_hybrid_retrievers(self):
+        retrievers = {}
+        for name in self._get_collections():
+            vector_retriever = Chroma(
+                collection_name=name,
+                embedding_function=LangchainUtils.embeddings,
+                persist_directory=CHROMA_PERSIST_PATH,
+            ).as_retriever(search_type="mmr", search_kwargs={"k": 5, "fetch_k": 20})
+
+            bm25_retriever = self._bm25_retriever(name)
+
+            retrievers[name] = EnsembleRetriever(
+                retrievers=[bm25_retriever, vector_retriever],
+                weights=[0.4, 0.6]
+            )
+        return retrievers
 
     def create_collection(self, file_name: str) -> Collection:
         collection_name = self.sanitize_collection_name(file_name)
