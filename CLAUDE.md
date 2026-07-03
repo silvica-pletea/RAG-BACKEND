@@ -36,38 +36,51 @@ from `.env` at import time.
   via `EmbeddingService` (noted in code as work that ideally belongs in a worker).
 - `app/routers/chat.py` — `/chat` POST; delegates to a module-level `RAGService`.
 - `app/services/file_service.py` — local file persistence under `SAVE_FILES_PATH`.
-- `app/services/embedding_service.py` — PDF → page `Document`s (pypdf) → chunks →
-  one Chroma collection per file.
+- `app/services/embedding_service.py` — PDF → page `Document`s (pypdf) → chunks,
+  added to the single shared Chroma collection tagged by `source` metadata.
 - `app/services/rag_service.py` — the RAG chain (see below).
 - `app/utils/langchain.py` — `LangchainUtils`: shared VoyageAI embeddings, text
-  splitter, and the single `chromadb.PersistentClient`. Owns collection
-  create/delete/list and retriever construction.
-- `app/config/settings.py` — loads all env vars; defines `ALLOWED_TYPE` (.pdf)
-  and `MAX_FILE_SIZE_BYTES`.
+  splitter, the single `chromadb.PersistentClient`, and the one `documents`
+  collection. Owns add/delete-by-source and retriever construction, including a
+  cached BM25 retriever.
+- `app/config/settings.py` — loads all env vars; defines `ALLOWED_TYPE` (.pdf),
+  `MAX_FILE_SIZE_BYTES`, `NO_DOCS` (per-retriever top-k), and `COLLECTION_NAME`.
 
 ### Key design points
 
-- **One Chroma collection per uploaded file.** `EmbeddingService.process_file`
-  creates a collection named after the (sanitized) filename. `create_collection`
-  deletes any existing same-name collection first, so re-uploading replaces it.
-  Collection names are sanitized in `LangchainUtils.sanitize_collection_name`
-  (strips extension, replaces invalid chars, enforces 3–512 char Chroma rules).
+- **Single Chroma collection for all files.** Every uploaded file's chunks go
+  into one collection (`COLLECTION_NAME = "documents"`), tagged with a `source`
+  metadata field (the original filename). `EmbeddingService.process_file` calls
+  `LangchainUtils.add_documents`, prefixing chunk IDs with a sanitized filename
+  (`sanitize_source_id`) so IDs don't collide across files. Deleting a file
+  calls `delete_by_source`, which removes chunks via `where={"source": ...}`
+  and raises `FileNotFoundError` if none match.
 
-- **Retrieval fans out across ALL collections.** `RAGService.ask` builds one
-  retriever per collection (MMR, `k=5`, `fetch_k=20`) via `get_retrievers()`,
-  runs them in a `RunnableParallel`, then `merge_docs` flattens results and tags
-  each chunk with its `source_collection` for `[Source N]` citation.
+- **Retrieval hits the single collection directly** — no more per-collection
+  fan-out or `RunnableParallel`. `RAGService.ask` picks one retriever
+  (`get_bm25_retriever`, `get_vector_retriever`, or `get_hybrid_retriever`,
+  MMR `k=NO_DOCS`, `fetch_k=20`) based on `SearchType`, invokes it once, and
+  `_collect_docs` formats each chunk with `[Source: <filename>]` from its
+  `source` metadata for citations.
+
+- **BM25 retriever is cached** on `LangchainUtils._bm25_retriever_cache` (a
+  class attribute, shared across instances) and invalidated on every
+  `add_documents`/`delete_by_source` call, avoiding a full corpus reload +
+  rebuild on every request. Building `BM25Retriever` on an empty corpus divides
+  by zero internally (`rank_bm25.BM25Okapi`), so `get_bm25_retriever` returns a
+  `RunnableLambda(lambda _: [])` stand-in when the collection has no documents.
 
 - **Two LLMs.** `llm` (`ANTHROPIC_MODEL`) generates answers; `fast_llm`
   (`ANTHROPIC_FAST_MODEL`) only reformulates the question. A `RunnableBranch`
   contextualizes (rewrites the question to standalone using history) **only when
   chat history is non-empty**; otherwise the raw question passes through.
 
-- **Chat history is in-memory and global.** `RAGService` is instantiated once at
-  import in `chat.py`, and `self.chat_history` is a single shared list (capped at
-  20 messages). All callers share one conversation; history does not survive a
-  restart. Note `_reformulate_question` references a non-existent
-  `REFORMULATE_PROMPT` — it is dead code; the live path uses `CONTEXTUALIZE_PROMPT`.
+- **Chat history is in-memory, global, and per search mode.** `RAGService` is
+  instantiated once at import in `chat.py`, and `self.chat_histories` holds one
+  list per `SearchType` (capped at 20 messages each). All callers share the same
+  conversation per mode; history does not survive a restart, and a follow-up
+  asked under one mode has no knowledge of turns asked under another.
+  `ChatRequest.type` defaults to `SearchType.HYBRID`.
 
 ### Embedding consistency caveat
 

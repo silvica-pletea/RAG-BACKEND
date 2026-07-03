@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from app.services.rag_service import RAGService
 from app.schemas.chat import ChatRequest, ChatResponse
 
-rag_service = RAGService();
+rag_service = RAGService()
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 @router.post("", response_model=ChatResponse)

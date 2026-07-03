@@ -6,7 +6,7 @@ from app.utils.langchain import LangchainUtils
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.runnables import RunnableParallel, RunnableLambda, RunnableBranch
+from langchain_core.runnables import RunnableLambda, RunnableBranch
 
 
 file_service = FileService()
@@ -60,27 +60,21 @@ class RAGService:
         # One chat history per search mode
         self.chat_histories = {SearchType.HYBRID: [], SearchType.SEMANTIC: [], SearchType.BM25: []}
 
-    def _merge_docs(self, inputs: dict) -> str:
-        all_docs = []
-        for collection_name, docs in inputs.items():
-            for doc in docs:
-                doc.metadata["source_collection"] = collection_name
-                all_docs.append(doc)
-
+    def _collect_docs(self, docs: list) -> str:
+        """Format retrieved chunks, tagging each with its source document."""
         return "\n\n---\n\n".join(
-            f"[Source: {d.metadata.get('source_collection', 'unknown')}]\n{d.page_content}"
-            for d in all_docs
+            f"[Source: {d.metadata.get('source', 'unknown')}]\n{d.page_content}"
+            for d in docs
         )
 
     def ask(self, question: str, type: SearchType) -> str:
+        """Answer a question; returns the answer and the retrieved source chunks."""
         if type == SearchType.HYBRID:
-            retrievers = langchain_utils.get_hybrid_retrievers()
+            retriever = langchain_utils.get_hybrid_retriever()
         elif type == SearchType.SEMANTIC:
-            retrievers = langchain_utils.get_vector_retrievers()
+            retriever = langchain_utils.get_vector_retriever()
         else:
-            retrievers = langchain_utils.get_bm25_retrievers()
-            
-        retrieve_all = RunnableParallel(**retrievers)
+            retriever = langchain_utils.get_bm25_retriever()
 
         chat_history = self.chat_histories[type]
 
@@ -95,37 +89,23 @@ class RAGService:
             RunnableLambda(lambda x: x["question"]),
         )
 
-        chain = (
-            # Step 1 — keep original input, add the reformulated question
-            RunnableParallel(
-                reformulated_question=contextualize_question,
-                chat_history=RunnableLambda(lambda x: x.get("chat_history", [])),
-                original_question=RunnableLambda(lambda x: x["question"]),
-            )
-            # Step 2 — retrieve using the reformulated question
-            | RunnableLambda(lambda x: {
-                "retrieved": retrieve_all.invoke(x["reformulated_question"]),
-                "question": x["reformulated_question"],
-                "chat_history": x["chat_history"],
-            })
-            # Step 3 — merge docs + build QA input
-            | RunnableLambda(lambda x: {
-                "context": self._merge_docs(x["retrieved"]),
-                "question": x["question"],
-                "chat_history": x["chat_history"],
-            })
-            # Step 4 — answer
-            | RAGService.QA_PROMPT
-            | self.llm
-            | StrOutputParser()
-        )
-
-        answer = chain.invoke({
+        # Step 1 — reformulate the question (only when there is history)
+        reformulated = contextualize_question.invoke({
+            "question": question,
             "chat_history": chat_history,
-            "question": question
         })
 
-        print(answer)
+        # Step 2 — retrieve and format
+        retrieved = retriever.invoke(reformulated)
+        docs = self._collect_docs(retrieved)
+
+        # Step 3 — answer from the merged context
+        answer_chain = RAGService.QA_PROMPT | self.llm | StrOutputParser()
+        answer = answer_chain.invoke({
+            "context": docs,
+            "question": reformulated,
+            "chat_history": chat_history,
+        })
 
         # Update history (keep last 10 turns)
         chat_history.append(HumanMessage(content=question))

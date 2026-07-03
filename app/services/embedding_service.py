@@ -11,26 +11,19 @@ class EmbeddingService:
         self.text_splitter = langchain_utils.text_splitter
 
     def process_file(self, file_path, file_name) -> None:
-        documents = self._read_pdf(file_path)
+        documents = self._read_pdf(file_path, file_name)
         chunks = self._get_chunk_text(documents)
-        self._save_to_chroma(file_name, chunks)
+        langchain_utils.add_documents(file_name, chunks)
 
     def delete_file(self, file_name) -> None:
-        langchain_utils.delete_collection(file_name)
+        langchain_utils.delete_by_source(file_name)
 
     # Private functions
     def _get_chunk_text(self, documents: list[Document]) -> list[Document]:
         return self.text_splitter.split_documents(documents)
-    
-    def _save_to_chroma(self, file_name: str, chunks: list[Document]) -> None:
-        documents = [d.page_content for d in chunks]
-        metadatas = [d.metadata for d in chunks]
-        ids = [f"doc_{i}" for i in range(len(chunks))]
-        collection = langchain_utils.create_collection(file_name)
-        collection.add(ids=ids, documents=documents, metadatas=metadatas)
 
-    def _read_pdf(self, filename) -> list[Document]:
-        reader = PdfReader(filename)
+    def _read_pdf(self, file_path, file_name) -> list[Document]:
+        reader = PdfReader(file_path)
         documents = []
         for page in reader.pages:
             text = page.extract_text().strip()
@@ -38,7 +31,7 @@ class EmbeddingService:
                 documents.append(
                     Document(
                         page_content=text,
-                        metadata={"source": filename, "page": page.page_number},
+                        metadata={"source": file_name, "page": page.page_number},
                     )
                 )
         return documents
