@@ -18,12 +18,11 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 pip install -r requirements.txt
 ```
 
-The API entry point is `app.main:app`. (The README's `uvicorn api:app` is stale —
-use `app.main:app`, matching the Dockerfile and `.vscode/launch.json`.)
+The API entry point is `app.main:app`.
 
 Swagger UI for manual endpoint testing: `http://127.0.0.1:8000/docs`.
 
-There is no test suite, linter, or build step configured.
+A test file exists at `tests/tests.py`. There is no linter or build step configured.
 
 ## Architecture
 

@@ -1,7 +1,6 @@
 from app.config.settings import ANTHROPIC_MODEL, ANTHROPIC_FAST_MODEL, ANTHROPIC_API_KEY
 from app.config.constants import SearchType
 from langchain_anthropic import ChatAnthropic
-from app.services.file_service import FileService
 from app.utils.langchain import LangchainUtils
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
@@ -9,7 +8,6 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.runnables import RunnableLambda, RunnableBranch
 
 
-file_service = FileService()
 langchain_utils = LangchainUtils()
 
 class RAGService:

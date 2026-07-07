@@ -74,7 +74,7 @@ async def upload_file(file: UploadFile):
         )
     return "File uploaded successfully!"
 
-@router.get("/")
+@router.get("")
 def get_files():
     try:
         files = file_service.get_files()

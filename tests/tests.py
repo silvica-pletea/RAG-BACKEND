@@ -9,7 +9,7 @@ rag_service = RAGService();
 
 def checkBM2():
     print('BM25 Search')
-    retriever = l._get_bm25_retriever(collection_name)
+    retriever = l.get_bm25_retriever(collection_name)
     print_results(retriever)
 
 def checkSemantic():
@@ -19,13 +19,8 @@ def checkSemantic():
 
 def checkHybrid():
     print('Hybrid Search')
-    vector_retriever = l._get_vector_retriever(collection_name)
-    bm25_retriever = l._get_bm25_retriever(collection_name)
-    retriever = EnsembleRetriever(
-        retrievers=[bm25_retriever, vector_retriever],
-        weights=[0.4, 0.6]
-    )
-    print_results(retriever)
+    hybrid_retriever = l.get_hybrid_retriever(collection_name)
+    print_results(hybrid_retriever)
 
 def ask():
     response = rag_service.ask(question, SearchType.HYBRID)
